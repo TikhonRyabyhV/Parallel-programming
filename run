@@ -1,0 +1,7 @@
+#!/bin/sh
+
+read -p "Enter program name:        " program
+read -p "Enter number of processes: " process
+read -p "Enter program arguments:   " args
+
+mpirun -np $process ./$program $args

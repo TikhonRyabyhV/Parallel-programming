@@ -4,22 +4,7 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
-
-// Параметры интегрирования
-const double from = 0;
-const double to = 6.99;
-double epsilon = 1e-6; // Погрешность по умолчанию
-const int max_stack_size = 1000;
-const int local_stack_critical_line = 10;
-
-// Функция для интегрирования: f(x) = cos(1/(7-x))
-double f(double x) {
-    return cos(1.0 / (7.0 - x));
-}
-//
-//double f(double x) {
-//	return (1.0 / (x * x)) * sin(1.0 / (x * x));
-//}
+#include "config.h"
 
 // Структура для отрезка [a, b] и его вклада в интеграл
 typedef struct {

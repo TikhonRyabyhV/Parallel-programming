@@ -1,0 +1,6 @@
+#!/bin/sh
+
+read -p "Enter number of processes: " process
+read -p "Enter program arguments:   " args
+
+mpirun -np $process ./conveq $args

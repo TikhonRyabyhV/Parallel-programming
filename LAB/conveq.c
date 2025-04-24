@@ -125,13 +125,14 @@ int main(int argc, char *argv[]) {
             MPI_Recv(&u_prev_k, 1, MPI_DOUBLE, rank - 1, k, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
 
-        // Вычисления для локального поддомена схемой прямоугольник
+        // Вычисления для локального поддомена
         compute_start = MPI_Wtime();
 
         double u_prev_k1 = rank == 0 ? u[k][0] : u_prev_k;
         int m = local_start;
         while (m <= Nx) {
             if (m >= local_end) {
+                // Пытаемся "украсть" задачи у других процессоров
                 int found = 0;
                 for (int p = 0; p < size; p++) {
                     if (next_m[p] <= Nx) {

@@ -1,72 +1,56 @@
-#include <mpi.h>
 #include <stdio.h>
+#include <mpi.h>
 #include <stdlib.h>
+#include <string.h>
 
 int main(int argc, char *argv[]) {
-
-    int world_size, rank;
+    int rank, size;
     MPI_Comm client_comm;
+    MPI_Status status;
+    char port_name[MPI_MAX_PORT_NAME];
+    int received_data;
+    int response = 42;
 
     MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    if (world_size != 1) {
-        if (rank == 0) {
-            fprintf(stderr, "Server should run with one process\n");
-        }
-
+    if (MPI_Open_port(MPI_INFO_NULL, port_name) != MPI_SUCCESS) {
+        fprintf(stderr, "Server: Failed to open port\n");
         MPI_Finalize();
-
-        return 0;
+        return 1;
     }
+    printf("Server opened port: %s\n", port_name);
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <number_of_clients>\n", argv[0]);
+    FILE *port_file = fopen("port.txt", "w");
+    if (!port_file) {
+        fprintf(stderr, "Server: Cannot open port file\n");
+        MPI_Close_port(port_name);
         MPI_Finalize();
-
-        return 0;
+        return 1;
     }
+    fprintf(port_file, "%s\n", port_name);
+    fclose(port_file);
 
-    int num_clients = atoi(argv[1]);
-    if (num_clients <= 0 || num_clients > 7) {
-        fprintf(stderr, "Number of clients must be between 1 and 7\n");
+    printf("Server: Waiting for client...\n");
+    if (MPI_Comm_accept(port_name, MPI_INFO_NULL, 0, MPI_COMM_WORLD, &client_comm) != MPI_SUCCESS) {
+        fprintf(stderr, "Server: Failed to accept client connection\n");
+        MPI_Close_port(port_name);
         MPI_Finalize();
-
-        return 0;
+        return 1;
     }
+    printf("Server: Client connected\n");
 
-    char *spawn_args[] = {NULL};
-    MPI_Info info = MPI_INFO_NULL;
-    int *errcodes = malloc(num_clients * sizeof(int));
+    MPI_Recv(&received_data, 1, MPI_INT, 0, 0, client_comm, &status);
+    printf("Server: Received %d from client\n", received_data);
 
-    MPI_Comm_spawn("client", spawn_args, num_clients, info, 0, MPI_COMM_SELF, &client_comm, errcodes);
+    MPI_Send(&response, 1, MPI_INT, 0, 0, client_comm);
+    printf("Server: Sent response %d to client\n", response);
 
-    for (int i = 0; i < num_clients; i++) {
-        if (errcodes[i] != MPI_SUCCESS) {
-            fprintf(stderr, "Error spawning client %d\n", i);
-            MPI_Abort(MPI_COMM_WORLD, MPI_ERR_SPAWN);
-        }
-    }
+    MPI_Comm_disconnect(&client_comm);
+    printf("Server: Client disconnected\n");
 
-    printf("Server: successfully spawned %d clients\n", num_clients);
-
-    for (int i = 0; i < num_clients; i++) {
-        int send_msg = 100 + i;
-        MPI_Send(&send_msg, 1, MPI_INT, i, 0, client_comm);
-        printf("Server: sent %d to client %d\n", send_msg, i);
-    }
-
-    for (int i = 0; i < num_clients; i++) {
-        int recv_msg;
-        MPI_Recv(&recv_msg, 1, MPI_INT, i, 0, client_comm, MPI_STATUS_IGNORE);
-        printf("Server: received %d from client %d\n", recv_msg, i);
-    }
-
-    free(errcodes);
-    MPI_Comm_free(&client_comm);
+    MPI_Close_port(port_name);
     MPI_Finalize();
-    
     return 0;
-
 }

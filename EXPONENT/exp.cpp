@@ -37,7 +37,7 @@ int main (int argc, char* argv[]) {
 	int comm_size = 1, my_rank = 0;
 
 	char* endptr = NULL;
-	unsigned int accuracy = atoi(argv[1]);
+	unsigned int accuracy = atoi(argv[1]) / 10;
 
 	check(MPI_Init (&argc, &argv), "Cannot initialize MPI!")
 
@@ -48,6 +48,8 @@ int main (int argc, char* argv[]) {
 
 
 	unsigned int N = comp_N (accuracy);
+
+	double time = MPI_Wtime();
 
 	LongDouble data("1.0", accuracy + 1);
 	LongDouble item("1.0", accuracy + 1);
@@ -84,7 +86,8 @@ int main (int argc, char* argv[]) {
 	}
 
 	if(my_rank == 0) {
-		std::cout << e << std::endl;
+		std::cout << "e = " <<e << std::endl;
+		std::cout << "time = " <<(MPI_Wtime() - time) * 1000 << std::endl;
 	}
 
 	check(MPI_Finalize(), "Bad end of MPI!")

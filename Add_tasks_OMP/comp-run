@@ -1,0 +1,11 @@
+#!/bin/sh
+
+read -p "Enter program name: " program
+
+suffix=".c"
+
+out=${program%"$suffix"}
+
+gcc -o $out $program -fopenmp
+
+./$out

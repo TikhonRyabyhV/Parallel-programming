@@ -13,7 +13,7 @@ def compile_c_code():
     if not os.path.exists(EXECUTABLE) or (os.path.exists(C_SOURCE) and os.path.getmtime(C_SOURCE) > os.path.getmtime(EXECUTABLE)):
         print(f"Compilation {C_SOURCE}...")
         compile_cmd = [
-            "gcc", "-O3", "-fopenmp", "-mavx2", "-mfma", 
+            "gcc", "-fopenmp", "-mavx2", "-mfma", 
             C_SOURCE, "-o", "matrix_mul_exe", "-lm"
         ]
         try:
@@ -100,7 +100,7 @@ def plot_group(title, filename, x_data, y_datasets, y_labels):
     plt.legend()
     plt.tight_layout()
     plt.savefig(filename)
-    print(f"💾 Сохранен: {filename}")
+    print(f"Сохранен: {filename}")
 
 def process_and_plot(data):
     N = data["Size"]

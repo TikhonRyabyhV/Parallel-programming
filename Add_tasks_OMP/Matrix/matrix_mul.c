@@ -7,7 +7,7 @@
 #include <time.h>
 
 #define ALIGN 32
-#define BLOCK_SIZE 64
+#define BLOCK_SIZE 32
 #define STRASSEN_THRESHOLD 128 
 
 float get_rand_float() { return (float)rand() / RAND_MAX; }
@@ -192,7 +192,39 @@ void matmul_fast_combined(const float* A, const float* B, float* C, int N) {
     free(B_T);
 }
 
-int main() {
+int main (int argc, char* argv[]) {
+
+if (argc >= 6 && strcmp(argv[1], "verify") == 0) {
+        int N = atoi(argv[2]);
+        char* fileA = argv[3];
+        char* fileB = argv[4];
+        char* fileC = argv[5];
+        
+        size_t size = N * N;
+        size_t bytes = size * sizeof(float);
+        
+        float *A = (float*)aligned_alloc(32, bytes);
+        float *B = (float*)aligned_alloc(32, bytes);
+        float *C = (float*)aligned_alloc(32, bytes);
+        
+        FILE *fa = fopen(fileA, "rb");
+        if (fa) { fread(A, sizeof(float), size, fa); fclose(fa); }
+        else { printf("Error opening A\n"); return 1; }
+
+        FILE *fb = fopen(fileB, "rb");
+        if (fb) { fread(B, sizeof(float), size, fb); fclose(fb); }
+        else { printf("Error opening B\n"); return 1; }
+        
+        matmul_fast_combined(A, B, C, N);
+        
+        FILE *fc = fopen(fileC, "wb");
+        if (fc) { fwrite(C, sizeof(float), size, fc); fclose(fc); }
+        else { printf("Error writing C\n"); return 1; }
+        
+        free(A); free(B); free(C);
+        return 0;
+    }
+
     int sizes[] = {64, 128, 256, 512, 1024, 2048};
     int num_sizes = sizeof(sizes) / sizeof(sizes[0]);
 

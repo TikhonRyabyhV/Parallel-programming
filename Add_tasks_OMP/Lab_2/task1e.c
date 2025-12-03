@@ -1,7 +1,3 @@
-//
-// (i, j) depends on (i - 1, j - 8) => D = (1, 8), True Dependence,
-// so we use column decomposition
-//
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -9,102 +5,87 @@
 
 #define ISIZE 5000
 #define JSIZE 5000
-#define GHOST 8
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     int rank, size;
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    int j_start = rank * (JSIZE / size);
-    int j_end = (rank + 1) * (JSIZE / size);
-    if (rank == size - 1) j_end = JSIZE;
-    int j_count = j_end - j_start;
+    if (8 % size != 0) {
+        if (rank == 0) {
+            printf("Error: Number of processes must be a divisor of 8 (1, 2, 4, 8) for this optimization.\n");
+        }
+        MPI_Finalize();
+        return 1;
+    }
 
-    double *a_local = (double *)malloc(ISIZE * j_count * sizeof(double));
-    
-    int i, j;
-    for (i = 0; i < ISIZE; i++) {
-        for (j = j_start; j < j_end; j++) {
-            a_local[i * j_count + (j - j_start)] = 10 * i + j;
+    int local_cols_count = JSIZE / size;
+
+    double *local_a = (double *)malloc(local_cols_count * ISIZE * sizeof(double));
+
+    for (int j_loc = 0; j_loc < local_cols_count; j_loc++) {
+        int global_j = j_loc * size + rank;
+        for (int i = 0; i < ISIZE; i++) {
+            local_a[j_loc * ISIZE + i] = 10 * i + global_j;
         }
     }
 
-    double *ghost_recv = (double*)malloc(GHOST * sizeof(double));
-    double *ghost_send = (double*)malloc(GHOST * sizeof(double));
+    // start timer
+    double tstart = MPI_Wtime();
 
-    double t_start = MPI_Wtime();
+    // external cycle (j, columns)
+    for (int j_loc = 0; j_loc < local_cols_count; j_loc++) {
+        int global_j = j_loc * size + rank;
 
-    for (i = 1; i < ISIZE; i++) {
-        if (rank < size - 1) {
-             for (int k = 0; k < GHOST; k++) {
-                 ghost_send[k] = a_local[(i-1) * j_count + (j_count - GHOST + k)];
-             }
-             MPI_Send(ghost_send, GHOST, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
-        }
-        
-        if (rank > 0) {
-             MPI_Recv(ghost_recv, GHOST, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        }
+        if (global_j < 8) continue;
 
-        for (j = j_start; j < j_end; j++) {
-            int local_j = j - j_start;
+        int stride = 8 / size;
+        int prev_j_loc = j_loc - stride;
+
+        // internal cycle (i, lines)
+        for (int i = 1; i < ISIZE; i++) {
+            double prev_val = local_a[prev_j_loc * ISIZE + (i - 1)];
             
-            if (j >= 8) {
-                double val_prev;
-                if (local_j >= 8) {
-                    val_prev = a_local[(i-1) * j_count + (local_j - 8)];
-                } else {
-                    val_prev = ghost_recv[local_j]; 
-                }
-                a_local[i * j_count + local_j] = sin(5 * val_prev);
-            }
+            local_a[j_loc * ISIZE + i] = sin(5 * prev_val);
         }
     }
 
-    double t_end = MPI_Wtime();
-    
+    // end timer
+    double tend = MPI_Wtime();
+
+    // collect data
+    double *full_data = NULL;
     if (rank == 0) {
-        FILE *ff = fopen("result.txt", "w");
-        double *row_buffer = (double*)malloc(JSIZE * sizeof(double));
-        
-        for (i = 0; i < ISIZE; i++) {
-            for (int k = 0; k < j_count; k++) {
-                row_buffer[k] = a_local[i * j_count + k];
-            }
-            
-            int current_pos = j_count;
-            for (int r = 1; r < size; r++) {
-                int r_j_start = r * (JSIZE / size);
-                int r_j_end = (r + 1) * (JSIZE / size);
-                if (r == size - 1) r_j_end = JSIZE;
-                int r_count = r_j_end - r_j_start;
+        full_data = (double *)malloc(ISIZE * JSIZE * sizeof(double));
+    }
+
+    MPI_Gather(local_a, local_cols_count * ISIZE, MPI_DOUBLE,
+               full_data, local_cols_count * ISIZE, MPI_DOUBLE,
+               0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        // exec time info
+        printf("Task 1e finished. Time: %f\n", tend - tstart);
+
+        FILE *ff = fopen("result_mpi_opt.txt", "w");
+        for (int i = 0; i < ISIZE; i++) {
+            for (int j = 0; j < JSIZE; j++) {
+                int owner_rank = j % size;
+                int owner_col_idx = j / size;
                 
-                MPI_Recv(row_buffer + current_pos, r_count, MPI_DOUBLE, r, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                current_pos += r_count;
-            }
-            
-            for (j = 0; j < JSIZE; j++) {
-                fprintf(ff, "%f ", row_buffer[j]);
+                long rank_offset = (long)owner_rank * (local_cols_count * ISIZE);
+                long local_offset = (long)owner_col_idx * ISIZE + i;
+                
+                fprintf(ff, "%f ", full_data[rank_offset + local_offset]);
             }
             fprintf(ff, "\n");
         }
         fclose(ff);
-        free(row_buffer);
-        printf("Task 1e finished. Time: %f\n", t_end - t_start);
-        
-    } else {
-        for (i = 0; i < ISIZE; i++) {
-             MPI_Send(a_local + i * j_count, j_count, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
-        }
+        free(full_data);
     }
 
-    free(a_local);
-    free(ghost_recv);
-    free(ghost_send);
+    free(local_a);
     MPI_Finalize();
     return 0;
 }
-

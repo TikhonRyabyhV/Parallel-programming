@@ -1,7 +1,3 @@
-//
-// (i, j) depends on (i + 2, j + 4) => D = (-2, -4), Anti-dependence,
-// so we create copies
-//
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -10,43 +6,89 @@
 #define ISIZE 5000
 #define JSIZE 5000
 
-double a[ISIZE][JSIZE];
-double b[ISIZE][JSIZE];
+int main(int argc, char **argv) {
+    double (*a)[JSIZE] = malloc(sizeof(double[ISIZE][JSIZE]));
+    if (a == NULL) return 1;
 
-int main(int argc, char **argv)
-{
-    int i, j;
-    FILE *ff;
-
-    for (i=0; i<ISIZE; i++){
-        for (j=0; j<JSIZE; j++){
-            a[i][j] = 10*i +j;
-            b[i][j] = a[i][j];
+    #pragma omp parallel for collapse(2)
+    for (int i = 0; i < ISIZE; i++) {
+        for (int j = 0; j < JSIZE; j++) {
+            a[i][j] = 10 * i + j;
         }
     }
 
-    double t_start = omp_get_wtime();
+    // start timer
+    double tstart = omp_get_wtime();
 
-    #pragma omp parallel for private(j) collapse(2)
-    for (i = 0; i < ISIZE - 4; i++) {
-        for (j = 0; j < JSIZE - 4; j++) {
-            a[i][j] = sin(0.1 * b[i+2][j+4]);
+    #pragma omp parallel
+    {
+        int tid = omp_get_thread_num();
+        int nthreads = omp_get_num_threads();
+
+        // chunking external cycle
+        int N = ISIZE - 4;
+        int chunk = N / nthreads;
+        int remainder = N % nthreads;
+
+        int start, end;
+        if (tid < remainder) {
+            start = tid * (chunk + 1);
+            end = start + chunk + 1;
+        } else {
+            start = tid * chunk + remainder;
+            end = start + chunk;
+        }
+
+        // local copy (shadow) of 2 lines for each process
+        double shadow[2][JSIZE];
+        
+        if (end < ISIZE) { 
+             for (int j = 0; j < JSIZE; j++) {
+                 shadow[0][j] = a[end][j];
+             }
+        }
+        if (end + 1 < ISIZE) {
+             for (int j = 0; j < JSIZE; j++) {
+                 shadow[1][j] = a[end + 1][j];
+             }
+        }
+
+        // wait for saving copies
+        #pragma omp barrier
+
+        for (int i = start; i < end; i++) {
+            for (int j = 0; j < JSIZE - 4; j++) {
+                double val;
+                int row_idx = i + 2;
+
+                if (row_idx < end) {
+                    val = a[row_idx][j+4];
+                } else {
+                    int shadow_idx = row_idx - end;
+                    val = shadow[shadow_idx][j+4];
+                }
+
+                a[i][j] = sin(0.1 * val);
+            }
         }
     }
+    
+    // end timer
+    double tend = omp_get_wtime();
 
-    double t_end = omp_get_wtime();
+    // exec time info
+    printf("Task 2z finished. Time: %f\n", tend - tstart);
 
-    printf("Time: %f\n", t_end - t_start);
-
-    ff = fopen("result.txt", "w");
-    for(i= 0; i < ISIZE; i++){
-        for (j= 0; j < JSIZE; j++){
+    FILE *ff = fopen("result_omp_opt.txt", "w");
+    for (int i = 0; i < ISIZE; i++) {
+        for (int j = 0; j < JSIZE; j++) {
             fprintf(ff, "%f ", a[i][j]);
         }
         fprintf(ff, "\n");
     }
     fclose(ff);
-    
+    free(a);
+
     return 0;
 }
 
